@@ -3,3 +3,4 @@ node_modules/
 .env
 *.log
 data/
+DS_Gemini_linkedin_scraper.js
