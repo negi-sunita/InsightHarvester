@@ -1,0 +1,23 @@
+{
+  "name": "linkedin-prototype",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node tests/linkedin_scraper.js",
+    "test": "jest tests/"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.52.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "openai": "^4.103.0",
+    "playwright": "^1.52.0",
+    "playwright-core": "^1.52.0"
+  },
+  "description": ""
+}
