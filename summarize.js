@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 
 config(); // Load .env
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+const model = process.env.OPENAI_MODEL || 'gpt-4o';
 
 // __dirname workaround for ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -19,34 +19,40 @@ const outputPath = path.resolve(__dirname, 'data/research_summaries.json');
 const posts = JSON.parse(fs.readFileSync(rawPostsPath, 'utf-8'));
 
 async function summarize(text) {
-  
-const response = await openai.chat.completions.create({
-  model: 'gpt-4o',
-  messages: [
-    {
-      role: 'system',
-      content: `You are an expert research analyst. When given a LinkedIn post that talks about a research paper, technical concept, or industry trend, you generate a concise, professional, single-paragraph summary in 4–6 sentences. Do not use bullet points. Do not copy text. Use your own words.`
-    },
-    {
-      role: 'user',
-      content: `Here is the LinkedIn post:\n\n${text}\n\nPlease summarize it in a single paragraph of 4–6 well-written sentences.`
-    }
-  ],
-  temperature: 0.3,
-  max_tokens: 400
-});
-
+  const response = await openai.chat.completions.create({
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: `You are an expert research analyst. When given a LinkedIn post that talks about a research paper, technical concept, or industry trend, you generate a concise, professional, single-paragraph summary in 4–6 sentences. Make the summary detailed enough to capture the research context, main objectives, methodology, key findings, and any authors or contributors mentioned in the post. Add a small random note to make each summary unique. Seed: ${Math.random()}. Do not use bullet points. Do not copy text. Use your own words.`
+      },
+      {
+        role: 'user',
+        content: `Here is the LinkedIn post:\n\n${text}\n\nPlease summarize it in a single paragraph of 4–6 well-written sentences.`
+      }
+    ],
+    temperature: 0.9,
+    max_tokens: 800
+  });
 
   return response.choices[0].message.content;
 }
 
 async function tagPost(summary) {
   const tagResponse = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model,
     messages: [
       {
         role: 'system',
-        content: 'You are a tagging assistant. Given a summary of a research-related post, return 1–3 short, relevant tags (like RAG, LLMOps, Evaluation, Startup Strategy, etc.). Return them as a comma-separated list.'
+        content: `
+You are a research assistant tasked with processing research papers and other documents. For each input, you must provide two distinct outputs:
+
+1. **Summary:** Write a concise, professional summary of the document, approximately 800 characters long, structured into 2-3 paragraphs. Focus on the research context, key objectives, methodology, main findings, and any contributors or authors mentioned.
+
+2. **Tags:** Provide 1-3 short, relevant tags derived from the document's content (e.g., RAG, LLMOps, Evaluation, Startup Strategy, AI Ethics). Return these tags as a comma-separated list.
+
+Please provide the summary first, followed by the tags on a new line. Do not copy text from the original post; use your own words. Do not use bullet points.
+`
       },
       {
         role: 'user',
@@ -57,6 +63,8 @@ async function tagPost(summary) {
     max_tokens: 30
   });
 
+// console.log("Using prompt:", content);
+
   return tagResponse.choices[0].message.content
     .split(',')
     .map(tag => tag.trim());
@@ -64,21 +72,44 @@ async function tagPost(summary) {
 
 const results = [];
 
-for (let i = 0; i < posts.length; i++) {
-  const post = posts[i];
+for (const [i, post] of posts.entries()) {
+       if (
+       (!post.researchLinks || post.researchLinks.length === 0) &&
+        (!post.links || post.links.length === 0)
+    ) {
+  // Skip posts without any research links or general links
+      console.log(`⏭️ Skipping post ${i + 1}/${posts.length} — no links found.`);
+     continue;
+    }
+
+    console.log(`🔍 Post ${i + 1}:`, {
+  researchLinks: post.researchLinks,
+  links: post.links
+});
+
   console.log(`⏳ Summarizing post ${i + 1}/${posts.length}...`);
 
-  
-  
   try {
-   
-   const summary = await summarize(post.content);
+    const summary = await summarize(post.content);
     const tags = await tagPost(summary);
 
+    const getSourceDomain = (url) => {
+      if (!url) return "Unknown";
+      if (url.includes("arxiv.org")) return "arXiv";
+      if (url.includes("ssrn.com")) return "SSRN";
+      if (url.includes("ieeexplore")) return "IEEE";
+      if (url.includes("springer")) return "Springer";
+      return "Other";
+    };
+
+    const paperSource = getSourceDomain(post.researchLinks[0]);
+
     results.push({
-    ...post,
-    summary,
-    tags
+      ...post,
+      summary,
+      tags,
+      sourceType: "research",
+      paperSource
     });
 
     console.log(`✅ Summary: ${summary.slice(0, 80)}...`);
